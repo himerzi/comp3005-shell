@@ -12,6 +12,9 @@
 #include <strings.h>
 //execve
 #include <unistd.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 char* my_getcwd ()
 {
@@ -48,7 +51,7 @@ char ** init_string_array(int array_size) {
     int i;
     for (i = 0; i < array_size-1; i++) {
         //arbitrary max string size of 300 - could be done dynamically
-        file_strings[i] = (char*) malloc(300 * sizeof(char));
+        file_strings[i] = (char*) malloc(600);
        // strlcpy(file_strings[i], NULL, sizeof(file_strings[i]));
         //should init strings to NULL
         //printf("malloc: %u %p\n", i, file_strings[i]);
@@ -62,9 +65,9 @@ char ** init_string_array(int array_size) {
 }
 char **  read_profile() {
     FILE *file;
-    char *filename = "/Users/md/Documents/UCL 3/3005 OS/cwk/Operating Systems/profile";
+    char *filename = strncat(my_getcwd(), "/profile", sizeof("/profile"));
     char **file_strings = init_string_array(3);
-    
+    //should also raise error if either of home or path are missing.
     /* open the file for writing */
     file = fopen(filename, "r"); if (file == NULL) {
         fprintf(stderr, "File %s could not be opened\n", filename);
@@ -102,7 +105,8 @@ char ** parse(char *user_input) {
     
     for (word = strtok(user_input, delim); word; word = strtok(NULL, delim))
     {
-        strlcpy(tokens[i], word, sizeof(tokens[i]));
+        strncpy(tokens[i], word, (size_t) strlen(word)+1);
+       // strn
         i++;
     }
     //buggy, array should be of correct size. as it is now we have dangling unusued memory
@@ -114,13 +118,14 @@ int execute(char *args[], char *env[]) {
     pid_t pid;
     
     pid = fork();
+    
     if (pid == 0)
     {
         /* This is the child process. */
         //_exit (EXIT_FAILURE);
         putenv(env[0]);//path
         putenv(env[1]);//home
-        printf ("this is the child process, with id %d, path: %s, home: %s\n", (int) getpid (), getenv("PATH"), getenv("HOME"));
+        //printf ("this is the child process, with id %d, path: %s, home: %s\n", (int) getpid (), getenv("PATH"), getenv("HOME"));
         execvp (args[0], args);
         /* The execvp function returns only if an error occurs. */
         perror("execvp() error");
@@ -139,6 +144,9 @@ int execute(char *args[], char *env[]) {
 
 }
 
+void change_working_dir(char * path) {
+    chdir(path);
+}
 int main(int argc, const char * argv[]) {
     
     
@@ -146,17 +154,25 @@ int main(int argc, const char * argv[]) {
     char **profile = read_profile();
     print_string_array(profile, 2);
     int child_status;
-    char* cwd = my_getcwd();
+    //init code
+    change_working_dir(&profile[1][5]);
+    
     //print_string_array(profile, 2);
     while(1) {
         //this 80 char should be consistent with allocated string lenths in init str array.
         char input[80];
         
-        printf("%s >", cwd);
+        printf("%s >", my_getcwd());
         fgets(input, 80, stdin);
-        printf("input: %s\n", input);
+        //printf("input: %s\n", input);
         char **parsed_input = parse(input);
-        child_status = execute(parsed_input, profile);
+        if (! strcmp (parsed_input[0], "cd")) {
+            change_working_dir(parsed_input[1]);
+        }
+        else{
+            child_status = execute(parsed_input, profile);
+        }
+        
         //print_string_array(parsed_input, 20);
         //20 should be stored as a global constant.
         free_string_array(parsed_input, 20);
